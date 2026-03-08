@@ -1,0 +1,535 @@
+# PNGOptimKit — Swift 封装项目规划
+
+## 1. 背景
+
+[pngoptim](https://github.com/okooo5km/pngoptim) 是一个用 Rust 编写的 PNG 有损压缩 CLI 工具，复刻并对标 pngquant/libimagequant，在速度和压缩率上已达到或超越 pngquant。
+
+当前 pngoptim 仅作为命令行工具发布。为了让 macOS/iOS 的 Swift 应用能够直接调用其量化引擎（无需 fork 子进程），需要将核心功能通过 C FFI 导出，打包为 XCFramework，并提供 Swift-idiomatic 的 API 封装，通过 SPM 分发。
+
+**为什么独立项目而非在 pngoptim 内添加：**
+
+- CLI 工具和 Swift 库的发布节奏、版本策略不同
+- 交叉编译 5 个 Apple target + XCFramework 打包的 CI 与现有 release workflow 差异大
+- 保持与 [SVGift](https://github.com/okooo5km/SVGift)（svgo-swift）一致的项目风格
+- 职责分离：pngoptim 专注算法，Swift 包专注平台集成
+
+## 2. 命名规范
+
+| 项目 | 名称 | 说明 |
+|------|------|------|
+| GitHub 仓库 | `pngoptim-swift` | kebab-case，与 svgo-swift 风格一致 |
+| Swift Package 名 | `PNGOptimKit` | PascalCase，SPM 规范 |
+| 核心 Rust 库 product | `libpngoptim_ffi` | Rust crate 输出的静态库 |
+| XCFramework binary target | `PNGOptimCore` | SPM binaryTarget 名 |
+| C FFI bridge target | `CPNGOptim` | SPM system module target，包含头文件和 modulemap |
+| 公开 Swift API target | `PNGOptimKit` | 用户 `import PNGOptimKit` |
+| Test target | `PNGOptimKitTests` | 标准后缀 |
+| Homebrew formula | 不需要 | 这是库，不是 CLI |
+
+用户使用方式：
+
+```swift
+// Package.swift 依赖
+.package(url: "https://github.com/okooo5km/pngoptim-swift.git", from: "0.1.0")
+
+// 代码中
+import PNGOptimKit
+```
+
+## 3. 技术方案
+
+**选型：手动 C FFI + cbindgen**
+
+PNGOptim 需要暴露的 API 面很小（1 个核心函数 + 内存释放），不值得引入 UniFFI 或 swift-bridge 的额外复杂度。手动 C FFI 零额外依赖、完全控制 ABI、编译最简单。
+
+### 3.1 整体架构
+
+```
+Swift App
+    |
+    | import PNGOptimKit
+    v
++-------------------+
+| PNGOptimKit       |  Swift target: Swift-idiomatic API
+| (Sources/PNGOptim)|  PNGOptimImage, PNGOptimOptions, etc.
++-------------------+
+    |
+    | import CPNGOptim
+    v
++-------------------+
+| CPNGOptim         |  C bridge target: header + modulemap
+| (Sources/CPNGOptim)|  pngoptim.h (cbindgen 生成)
++-------------------+
+    |
+    | links PNGOptimCore
+    v
++-------------------+
+| PNGOptimCore      |  binaryTarget: XCFramework
+| (.xcframework)    |  Rust 编译的静态库 (5 架构)
++-------------------+
+    |
+    | Rust FFI crate
+    v
++-------------------+
+| pngoptim (crate)  |  上游 Rust crate (git 依赖)
+| okooo5km/pngoptim |  核心量化算法
++-------------------+
+```
+
+### 3.2 上游 pngoptim 改动
+
+在 pngoptim 项目中需要做一次小改动——添加 `lib.rs` 导出公共 API，让它同时作为 binary + library crate：
+
+**Cargo.toml 添加：**
+```toml
+[lib]
+name = "pngoptim"
+path = "src/lib.rs"
+```
+
+**src/lib.rs 内容（重新导出已有模块）：**
+```rust
+pub mod pipeline;
+pub mod quality;
+pub mod error;
+pub mod cli; // QualityRange 解析
+```
+
+需要导出的核心 API：
+
+| 模块 | 类型/函数 | 用途 |
+|------|----------|------|
+| `pipeline` | `process_png_bytes()` | 核心处理入口 |
+| `pipeline` | `PipelineOptions` | 输入参数 |
+| `pipeline` | `PipelineResult` | 输出结果（含 png_data） |
+| `pipeline` | `PipelineMetrics` | 性能指标 |
+| `quality` | `QualityMetrics` | 质量评估 |
+| `error` | `AppError` | 错误类型 |
+| `cli` | `QualityRange`, `parse_quality_range()` | 质量范围解析 |
+
+### 3.3 FFI Crate（在 pngoptim-swift 仓库内）
+
+创建一个独立的 Rust crate，依赖上游 pngoptim，导出 C ABI 函数：
+
+**rust/Cargo.toml：**
+```toml
+[package]
+name = "pngoptim-ffi"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "pngoptim_ffi"
+crate-type = ["staticlib"]
+
+[dependencies]
+pngoptim = { git = "https://github.com/okooo5km/pngoptim.git", tag = "v0.2.0" }
+
+[build-dependencies]
+cbindgen = "0.27"
+```
+
+**rust/src/lib.rs（C FFI 接口）：**
+```rust
+use std::slice;
+
+/// Opaque result handle
+#[repr(C)]
+pub struct PNGOptimResult {
+    /// Output PNG data pointer (caller must NOT free directly, use pngoptim_result_free)
+    pub data: *mut u8,
+    pub data_len: usize,
+    /// Image dimensions
+    pub width: u32,
+    pub height: u32,
+    /// Size info
+    pub input_bytes: u64,
+    pub output_bytes: u64,
+    /// Quality
+    pub quality_score: u8,
+    pub quality_mse: f64,
+    /// Timing (milliseconds)
+    pub decode_ms: f64,
+    pub quantize_ms: f64,
+    pub encode_ms: f64,
+    pub total_ms: f64,
+    /// Error info (error_code=0 means success)
+    pub error_code: i32,
+    pub error_message: *mut libc::c_char,
+}
+
+#[repr(C)]
+pub struct PNGOptimOptions {
+    pub quality_min: u8,       // 0 = use default
+    pub quality_max: u8,       // 0 = use default
+    pub has_quality: bool,     // false = no quality constraint
+    pub speed: u8,             // 1-11, 0 = default(4)
+    pub dither_level: f32,     // 0.0-1.0, negative = default
+    pub posterize: u8,         // 0 = disabled
+    pub strip: bool,
+    pub skip_if_larger: bool,
+    pub no_icc: bool,
+}
+
+#[no_mangle]
+pub extern "C" fn pngoptim_default_options() -> PNGOptimOptions { ... }
+
+#[no_mangle]
+pub extern "C" fn pngoptim_process(
+    input: *const u8,
+    input_len: usize,
+    options: *const PNGOptimOptions,
+) -> *mut PNGOptimResult { ... }
+
+#[no_mangle]
+pub extern "C" fn pngoptim_result_free(result: *mut PNGOptimResult) { ... }
+```
+
+**rust/cbindgen.toml：**
+```toml
+language = "C"
+include_guard = "PNGOPTIM_FFI_H"
+sys_includes = ["stdint.h", "stdbool.h", "stddef.h"]
+autogen_warning = "/* Auto-generated by cbindgen. Do not edit. */"
+
+[export]
+include = ["PNGOptimResult", "PNGOptimOptions"]
+```
+
+**rust/build.rs：**
+```rust
+fn main() {
+    let crate_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    cbindgen::Builder::new()
+        .with_crate(&crate_dir)
+        .with_language(cbindgen::Language::C)
+        .generate()
+        .expect("Unable to generate C bindings")
+        .write_to_file("generated/pngoptim.h");
+}
+```
+
+### 3.4 项目目录结构
+
+```
+pngoptim-swift/
+├── Package.swift
+├── README.md
+├── LICENSE                         # MIT
+├── CLAUDE.md
+├── .github/
+│   └── workflows/
+│       ├── ci.yml                  # Swift build + test
+│       └── release.yml             # Rust 交叉编译 + XCFramework + GitHub Release
+├── Sources/
+│   ├── CPNGOptim/                  # C bridge target
+│   │   └── include/
+│   │       ├── pngoptim.h          # cbindgen 生成（release 时复制过来）
+│   │       └── module.modulemap
+│   └── PNGOptimKit/                # 公开 Swift API
+│       ├── PNGOptimKit.swift       # 主入口
+│       ├── Options.swift           # PNGOptimOptions Swift 封装
+│       └── Result.swift            # PNGOptimResult Swift 封装
+├── Tests/
+│   └── PNGOptimKitTests/
+│       ├── PNGOptimKitTests.swift
+│       └── Fixtures/               # 测试用 PNG 文件
+├── rust/                           # FFI crate
+│   ├── Cargo.toml
+│   ├── Cargo.lock
+│   ├── cbindgen.toml
+│   ├── build.rs
+│   ├── generated/
+│   │   └── pngoptim.h              # cbindgen 输出
+│   └── src/
+│       └── lib.rs                  # extern "C" 函数
+└── scripts/
+    └── build-xcframework.sh        # 编译 + 打包脚本
+```
+
+### 3.5 Package.swift
+
+```swift
+// swift-tools-version: 5.9
+import PackageDescription
+
+let useLocalFramework = false
+
+let package = Package(
+    name: "PNGOptimKit",
+    platforms: [
+        .macOS(.v11),
+        .iOS(.v14),
+    ],
+    products: [
+        .library(name: "PNGOptimKit", targets: ["PNGOptimKit"]),
+    ],
+    targets: [
+        // Prebuilt Rust static library
+        useLocalFramework ?
+            .binaryTarget(
+                name: "PNGOptimCore",
+                path: "PNGOptimCore.xcframework"
+            ) :
+            .binaryTarget(
+                name: "PNGOptimCore",
+                url: "https://github.com/okooo5km/pngoptim-swift/releases/download/v0.1.0/PNGOptimCore.xcframework.zip",
+                checksum: "<sha256>"
+            ),
+        // C header + modulemap bridge
+        .target(
+            name: "CPNGOptim",
+            dependencies: ["PNGOptimCore"],
+            path: "Sources/CPNGOptim"
+        ),
+        // Public Swift API
+        .target(
+            name: "PNGOptimKit",
+            dependencies: ["CPNGOptim"],
+            path: "Sources/PNGOptimKit"
+        ),
+        .testTarget(
+            name: "PNGOptimKitTests",
+            dependencies: ["PNGOptimKit"],
+            path: "Tests/PNGOptimKitTests",
+            resources: [.copy("Fixtures")]
+        ),
+    ]
+)
+```
+
+### 3.6 module.modulemap
+
+```
+module CPNGOptim {
+    header "pngoptim.h"
+    link "pngoptim_ffi"
+    export *
+}
+```
+
+### 3.7 Swift API 设计
+
+```swift
+// Sources/PNGOptimKit/PNGOptimKit.swift
+
+import Foundation
+import CPNGOptim
+
+/// PNG quantization (lossy compression) engine powered by pngoptim.
+public enum PNGOptim {
+
+    /// Optimize a PNG image with the given options.
+    /// - Parameters:
+    ///   - data: Raw PNG file data.
+    ///   - options: Compression options (quality, speed, etc.).
+    /// - Returns: Optimization result containing the compressed PNG data.
+    /// - Throws: `PNGOptimError` if processing fails.
+    public static func optimize(_ data: Data, options: Options = .default) throws -> Result {
+        // 调用 C FFI，转换结果
+    }
+}
+
+// Sources/PNGOptimKit/Options.swift
+
+extension PNGOptim {
+    public struct Options: Sendable {
+        public var qualityMin: UInt8       // 0-100
+        public var qualityMax: UInt8       // 0-100
+        public var speed: UInt8            // 1-11
+        public var ditherLevel: Float      // 0.0-1.0
+        public var posterize: UInt8        // 0-8
+        public var strip: Bool
+        public var skipIfLarger: Bool
+        public var noICC: Bool
+
+        public static let `default` = Options(...)
+
+        public init(quality: ClosedRange<UInt8> = 0...100,
+                    speed: UInt8 = 4, ...) { ... }
+    }
+}
+
+// Sources/PNGOptimKit/Result.swift
+
+extension PNGOptim {
+    public struct Result: Sendable {
+        public let data: Data              // Optimized PNG bytes
+        public let width: UInt32
+        public let height: UInt32
+        public let inputBytes: UInt64
+        public let outputBytes: UInt64
+        public let qualityScore: UInt8     // 0-100
+        public let qualityMSE: Double
+        public let metrics: Metrics
+    }
+
+    public struct Metrics: Sendable {
+        public let decodeTime: Duration
+        public let quantizeTime: Duration
+        public let encodeTime: Duration
+        public let totalTime: Duration
+    }
+
+    public enum Error: LocalizedError {
+        case decodeFailed(String)
+        case encodeFailed(String)
+        case qualityTooLow(minimum: UInt8, actual: UInt8)
+        case outputLarger(inputBytes: UInt64, outputBytes: UInt64)
+        case unknown(code: Int32, message: String)
+    }
+}
+```
+
+## 4. 构建流程
+
+### 4.1 支持的 Apple 平台/架构
+
+| 平台 | Rust Target | 用途 |
+|------|------------|------|
+| macOS ARM64 | `aarch64-apple-darwin` | Apple Silicon Mac |
+| macOS x86_64 | `x86_64-apple-darwin` | Intel Mac |
+| iOS ARM64 | `aarch64-apple-ios` | iPhone/iPad 真机 |
+| iOS Simulator ARM64 | `aarch64-apple-ios-sim` | Apple Silicon 模拟器 |
+| iOS Simulator x86_64 | `x86_64-apple-ios` | Intel Mac 模拟器 |
+
+### 4.2 build-xcframework.sh 流程
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+TARGETS=(
+    aarch64-apple-darwin
+    x86_64-apple-darwin
+    aarch64-apple-ios
+    aarch64-apple-ios-sim
+    x86_64-apple-ios
+)
+
+# 1. 安装 targets
+for t in "${TARGETS[@]}"; do
+    rustup target add "$t"
+done
+
+# 2. 编译所有架构
+for t in "${TARGETS[@]}"; do
+    cargo build --release --target "$t" --manifest-path rust/Cargo.toml
+done
+
+# 3. 生成头文件（build.rs 已处理，复制到 Sources）
+cp rust/generated/pngoptim.h Sources/CPNGOptim/include/
+
+# 4. lipo 合并 universal binary
+mkdir -p target/universal-macos target/universal-ios-sim
+
+lipo -create \
+    rust/target/aarch64-apple-darwin/release/libpngoptim_ffi.a \
+    rust/target/x86_64-apple-darwin/release/libpngoptim_ffi.a \
+    -output target/universal-macos/libpngoptim_ffi.a
+
+lipo -create \
+    rust/target/aarch64-apple-ios-sim/release/libpngoptim_ffi.a \
+    rust/target/x86_64-apple-ios/release/libpngoptim_ffi.a \
+    -output target/universal-ios-sim/libpngoptim_ffi.a
+
+# 5. 打包 XCFramework
+xcodebuild -create-xcframework \
+    -library target/universal-macos/libpngoptim_ffi.a \
+        -headers Sources/CPNGOptim/include/ \
+    -library rust/target/aarch64-apple-ios/release/libpngoptim_ffi.a \
+        -headers Sources/CPNGOptim/include/ \
+    -library target/universal-ios-sim/libpngoptim_ffi.a \
+        -headers Sources/CPNGOptim/include/ \
+    -output PNGOptimCore.xcframework
+
+# 6. 打包 zip + checksum
+zip -r PNGOptimCore.xcframework.zip PNGOptimCore.xcframework
+swift package compute-checksum PNGOptimCore.xcframework.zip
+```
+
+### 4.3 CI/CD
+
+**ci.yml**（push/PR to main）：
+- macOS runner
+- 安装 Rust toolchain + Apple targets
+- `cargo build --release` 编译 FFI crate（仅 native target）
+- `cargo test` 测试 FFI crate
+- `swift build` 构建 Swift 包（使用 local XCFramework）
+- `swift test` 运行 Swift 测试
+
+**release.yml**（tag `v*`）：
+1. macOS runner 上交叉编译 5 个架构
+2. cbindgen 生成头文件
+3. lipo + xcodebuild 打包 XCFramework
+4. zip + compute-checksum
+5. 创建 GitHub Release，上传 XCFramework.zip
+6. 自动更新 Package.swift 中的 url 和 checksum
+
+## 5. 依赖关系总结
+
+```
+okooo5km/pngoptim (Rust, existing)
+    ^
+    | Cargo git dependency (tag-based)
+    |
+okooo5km/pngoptim-swift (new repo)
+    ├── rust/          FFI crate -> staticlib -> XCFramework
+    ├── Sources/       Swift package (SPM)
+    └── .github/       CI/CD workflows
+```
+
+**关键依赖版本锁定策略：**
+- FFI crate 通过 `tag = "vX.Y.Z"` 锁定 pngoptim 版本
+- 升级 pngoptim 时，更新 tag -> 重新编译 XCFramework -> 发布新版 pngoptim-swift
+
+## 6. 实施步骤
+
+### Phase 1: 上游准备（在 pngoptim 仓库）
+
+- [x] 添加 `src/lib.rs`，导出 pipeline/quality/error/cli 模块
+- [x] `Cargo.toml` 添加 `[lib]` section
+- [x] `cargo test` 确保不破坏现有功能
+- [x] 提交、打 tag v0.2.1
+
+### Phase 2: FFI Crate（在 pngoptim-swift 仓库）
+
+- [x] 创建 GitHub 仓库 `okooo5km/pngoptim-swift`
+- [x] 搭建 `rust/` 目录，Cargo.toml 依赖上游 pngoptim
+- [x] 实现 `extern "C"` 函数：`pngoptim_default_options`、`pngoptim_process`、`pngoptim_result_free`
+- [x] 配置 cbindgen，验证生成的 `pngoptim.h` 正确
+- [ ] 编写 Rust 侧单元测试
+
+### Phase 3: XCFramework 构建
+
+- [x] 编写 `scripts/build-xcframework.sh`
+- [ ] 本地验证 5 架构交叉编译
+- [x] 验证 XCFramework 结构正确
+
+### Phase 4: Swift 封装
+
+- [x] 编写 `Package.swift`（先用 local binaryTarget 开发）
+- [x] 编写 `Sources/CPNGOptim/include/module.modulemap`
+- [x] 实现 `PNGOptimKit` Swift API（Options, Result, Error）
+- [x] 编写测试（用几张测试 PNG 验证压缩输出）—— 13 tests passed
+- [ ] 验证 macOS + iOS 模拟器都能 build
+
+### Phase 5: CI/CD + 发布
+
+- [x] 配置 `ci.yml`
+- [x] 配置 `release.yml`（交叉编译 + XCFramework + Release + checksum 更新）
+- [ ] 发布 v0.1.0
+- [ ] 验证 `swift package resolve` 能正确拉取
+- [x] 编写 README
+
+## 7. 风险与注意事项
+
+1. **Rust 交叉编译依赖**：pngoptim 依赖 `zlib-rs` 和 `lcms2`，需确认它们在 iOS target 上能编译通过。lcms2 可能需要特殊处理（它是 C 库的 Rust binding）。如果有问题，`no_icc` 模式可作为降级方案。
+
+2. **静态库体积**：5 架构的 Rust 静态库 + XCFramework 可能较大（预估 10-30MB zip）。可通过 `strip` 和 LTO 优化。
+
+3. **线程安全**：pngoptim 内部使用 rayon 进行并行计算。需确认 rayon 在 iOS 上的行为（全局线程池初始化）。FFI 函数应标注为线程安全。
+
+4. **内存管理**：Rust 分配的内存必须通过 `pngoptim_result_free` 释放，Swift 侧需要在 `Result` 的 `deinit` 或工厂方法中确保调用。
+
+5. **最低系统版本**：macOS 11+ / iOS 14+ 应该足够覆盖目标用户。

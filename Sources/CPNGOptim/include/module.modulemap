@@ -1,0 +1,5 @@
+module CPNGOptim {
+  header "pngoptim.h"
+  link "pngoptim_ffi"
+  export *
+}
