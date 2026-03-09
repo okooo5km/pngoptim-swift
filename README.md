@@ -1,6 +1,6 @@
 # PNGOptimKit
 
-Swift wrapper for the [pngoptim](https://github.com/okooo5km/pngoptim) PNG quantization engine. Provides lossy PNG compression for macOS and iOS applications via Swift Package Manager.
+Swift wrapper for the [pngoptim](https://github.com/okooo5km/pngoptim) PNG quantization engine. Provides lossy PNG compression with automatic APNG detection and lossless animation optimization for macOS and iOS applications via Swift Package Manager.
 
 ## Requirements
 
@@ -13,7 +13,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/okooo5km/pngoptim-swift.git", from: "0.1.0")
+  .package(url: "https://github.com/okooo5km/pngoptim-swift.git", from: "0.3.0")
 ]
 ```
 
@@ -65,6 +65,7 @@ Optimizes a PNG image.
 | `strip` | `Bool` | `false` | Strip metadata |
 | `skipIfLarger` | `Bool` | `false` | Skip if output is larger |
 | `noICC` | `Bool` | `false` | Skip ICC color-space normalization |
+| `apngMode` | `APNGMode` | `.safe` | APNG handling mode (`.safe` or `.aggressive`) |
 
 ### Result
 
@@ -89,6 +90,15 @@ Optimizes a PNG image.
 | `encodeFailed` | Encoding failed |
 | `qualityTooLow` | Quality below minimum threshold |
 | `outputLarger` | Output exceeds input size (with `skipIfLarger`) |
+
+### APNG Support
+
+PNGOptimKit automatically detects APNG files via the `acTL` chunk and applies lossless animation optimization (quality score = 100). Two modes are available:
+
+- **`.safe`** — Fold duplicate frames and cautious transparent trim. Conservative approach with minimal structural changes.
+- **`.aggressive`** — Minimize frame rectangles by rewriting frame sizes, offsets, and blend operations for higher compression.
+
+If APNG decoding fails, the engine falls back to the standard static PNG quantization pipeline.
 
 ## Development
 

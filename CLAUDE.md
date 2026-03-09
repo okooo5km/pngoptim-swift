@@ -44,6 +44,7 @@ pngoptim-swift/
 - 部署目标：macOS 10.15+ / iOS 13+
 - Swift API 中时间类型使用 `TimeInterval`（兼容 macOS 10.15）
 - FFI 使用 `std::ffi::c_char`（不依赖 libc crate）
+- API 变更时同步更新 `docs/usage.md` 和 `README.md` 中的对应文档
 
 ## 常用命令
 

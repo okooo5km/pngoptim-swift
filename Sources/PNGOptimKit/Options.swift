@@ -33,9 +33,9 @@ extension PNGOptim {
 
   /// APNG handling mode.
   public enum APNGMode: UInt8, Sendable, Equatable {
-    /// Safe mode: skip APNG files without error.
+    /// Safe mode: fold duplicate frames and cautious transparent trim.
     case safe = 0
-    /// Aggressive mode: quantize first frame, discard animation.
+    /// Aggressive mode: minimize frame rectangles for higher compression.
     case aggressive = 1
   }
 
