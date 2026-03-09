@@ -12,7 +12,7 @@ use std::ffi::{CString, c_char};
 use std::ptr;
 use std::slice;
 
-use pngoptim::cli::QualityRange;
+use pngoptim::cli::{ApngMode, QualityRange};
 use pngoptim::error::AppError;
 use pngoptim::pipeline::{PipelineOptions, process_png_bytes};
 
@@ -49,6 +49,8 @@ pub struct PNGOptimOptions {
     pub skip_if_larger: bool,
     /// Skip ICC profile color-space normalization.
     pub no_icc: bool,
+    /// APNG handling mode (0 = safe, 1 = aggressive).
+    pub apng_mode: u8,
 }
 
 /// Result of PNG optimization.
@@ -103,6 +105,7 @@ pub extern "C" fn pngoptim_default_options() -> PNGOptimOptions {
         strip: false,
         skip_if_larger: false,
         no_icc: false,
+        apng_mode: 0,
     }
 }
 
@@ -213,6 +216,11 @@ fn convert_options(c_opts: &PNGOptimOptions) -> PipelineOptions {
         Some(c_opts.posterize)
     };
 
+    let apng_mode = match c_opts.apng_mode {
+        1 => ApngMode::Aggressive,
+        _ => ApngMode::Safe,
+    };
+
     PipelineOptions {
         quality,
         speed,
@@ -221,6 +229,7 @@ fn convert_options(c_opts: &PNGOptimOptions) -> PipelineOptions {
         strip: c_opts.strip,
         skip_if_larger: c_opts.skip_if_larger,
         no_icc: c_opts.no_icc,
+        apng_mode,
     }
 }
 

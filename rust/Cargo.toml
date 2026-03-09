@@ -1,6 +1,6 @@
 [package]
 name = "pngoptim-ffi"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 authors = ["okooo5km(十里)"]
@@ -11,7 +11,7 @@ name = "pngoptim_ffi"
 crate-type = ["staticlib"]
 
 [dependencies]
-pngoptim = { git = "https://github.com/okooo5km/pngoptim.git", tag = "v0.2.1" }
+pngoptim = { git = "https://github.com/okooo5km/pngoptim.git", tag = "v0.3.0" }
 
 [build-dependencies]
 cbindgen = "0.29"

@@ -581,8 +581,8 @@ dependencies = [
 
 [[package]]
 name = "pngoptim"
-version = "0.2.1"
-source = "git+https://github.com/okooo5km/pngoptim.git?tag=v0.2.1#e07b49b12f08cc941ef25ed1f37917d563e6c2ff"
+version = "0.3.0"
+source = "git+https://github.com/okooo5km/pngoptim.git?tag=v0.3.0#99cdff3070a60d6afa65cf56bd39fc7570c09c34"
 dependencies = [
  "clap",
  "crc32fast",
@@ -600,7 +600,7 @@ dependencies = [
 
 [[package]]
 name = "pngoptim-ffi"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "cbindgen",
  "pngoptim",

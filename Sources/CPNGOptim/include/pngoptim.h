@@ -51,6 +51,10 @@ typedef struct PNGOptimOptions {
    * Skip ICC profile color-space normalization.
    */
   bool no_icc;
+  /**
+   * APNG handling mode (0 = safe, 1 = aggressive).
+   */
+  uint8_t apng_mode;
 } PNGOptimOptions;
 
 /**

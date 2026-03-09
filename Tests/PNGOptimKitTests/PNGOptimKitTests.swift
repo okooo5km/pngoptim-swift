@@ -69,6 +69,25 @@ struct OptionsTests {
     #expect(opts.strip == false)
     #expect(opts.skipIfLarger == false)
     #expect(opts.noICC == false)
+    #expect(opts.apngMode == .safe)
+  }
+
+  @Test("APNGMode default is safe")
+  func apngModeDefault() {
+    let opts = PNGOptim.Options()
+    #expect(opts.apngMode == .safe)
+  }
+
+  @Test("APNGMode aggressive value")
+  func apngModeAggressive() {
+    let opts = PNGOptim.Options(apngMode: .aggressive)
+    #expect(opts.apngMode == .aggressive)
+  }
+
+  @Test("APNGMode rawValue mapping")
+  func apngModeRawValue() {
+    #expect(PNGOptim.APNGMode.safe.rawValue == 0)
+    #expect(PNGOptim.APNGMode.aggressive.rawValue == 1)
   }
 
   @Test("QualityRange from ClosedRange")

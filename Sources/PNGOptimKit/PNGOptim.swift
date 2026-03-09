@@ -81,6 +81,7 @@ extension PNGOptim.Options {
     opts.strip = strip
     opts.skip_if_larger = skipIfLarger
     opts.no_icc = noICC
+    opts.apng_mode = apngMode.rawValue
     return opts
   }
 }

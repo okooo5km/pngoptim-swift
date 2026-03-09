@@ -31,6 +31,14 @@ extension PNGOptim {
     }
   }
 
+  /// APNG handling mode.
+  public enum APNGMode: UInt8, Sendable, Equatable {
+    /// Safe mode: skip APNG files without error.
+    case safe = 0
+    /// Aggressive mode: quantize first frame, discard animation.
+    case aggressive = 1
+  }
+
   /// Options for PNG quantization.
   public struct Options: Sendable {
     /// Quality constraint. `nil` means no quality constraint (best effort).
@@ -56,6 +64,9 @@ extension PNGOptim {
     /// Skip ICC profile color-space normalization.
     public var noICC: Bool
 
+    /// APNG handling mode. Default is `.safe`.
+    public var apngMode: APNGMode
+
     /// Default options: no quality constraint, speed 4, full dithering.
     public static let `default` = Options()
 
@@ -69,6 +80,7 @@ extension PNGOptim {
     ///   - strip: Strip metadata. Default is `false`.
     ///   - skipIfLarger: Skip if output is larger. Default is `false`.
     ///   - noICC: Skip ICC normalization. Default is `false`.
+    ///   - apngMode: APNG handling mode. Default is `.safe`.
     public init(
       quality: QualityRange? = nil,
       speed: UInt8 = 4,
@@ -76,7 +88,8 @@ extension PNGOptim {
       posterize: UInt8 = 0,
       strip: Bool = false,
       skipIfLarger: Bool = false,
-      noICC: Bool = false
+      noICC: Bool = false,
+      apngMode: APNGMode = .safe
     ) {
       self.quality = quality
       self.speed = speed
@@ -85,6 +98,7 @@ extension PNGOptim {
       self.strip = strip
       self.skipIfLarger = skipIfLarger
       self.noICC = noICC
+      self.apngMode = apngMode
     }
   }
 }
