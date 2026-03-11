@@ -4,7 +4,7 @@
 
 import PackageDescription
 
-let useLocalFramework = false
+let useLocalFramework = true
 
 let package = Package(
   name: "PNGOptimKit",

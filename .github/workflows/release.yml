@@ -84,7 +84,7 @@ jobs:
           echo "Updated Package.swift:"
           cat Package.swift
 
-      - name: Commit and force-move tag
+      - name: Commit release Package.swift and retag
         if: steps.check.outputs.skip != 'true'
         run: |
           TAG="${GITHUB_REF_NAME}"
@@ -92,10 +92,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Create a release-only commit (NOT pushed to main)
           git add Package.swift
           git commit -m "chore: update Package.swift for ${TAG} release"
-          git push origin HEAD:main
 
+          # Move the tag to this new commit and push only the tag
           git tag -f "$TAG"
           git push -f origin "$TAG"
 
