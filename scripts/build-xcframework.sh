@@ -115,6 +115,20 @@ echo "==> Copying generated header..."
 mkdir -p "$PROJECT_DIR/Sources/CPNGOptim/include"
 cp "$RUST_DIR/generated/pngoptim.h" "$PROJECT_DIR/Sources/CPNGOptim/include/pngoptim.h"
 
+# ── Step 2.5: Create XCFramework-specific headers ──
+# XCFramework needs module name "PNGOptimCore" (matching binaryTarget name)
+# to avoid conflict with SPM's "CPNGOptim" C bridge target.
+XCFW_HEADERS="$PROJECT_DIR/target/xcframework-headers"
+mkdir -p "$XCFW_HEADERS"
+cp "$RUST_DIR/generated/pngoptim.h" "$XCFW_HEADERS/pngoptim.h"
+cat > "$XCFW_HEADERS/module.modulemap" <<'MODULEMAP'
+module PNGOptimCore {
+  header "pngoptim.h"
+  link "pngoptim_ffi"
+  export *
+}
+MODULEMAP
+
 if $LOCAL_ONLY; then
   # ── Local-only: create single-platform XCFramework ──
 
@@ -128,7 +142,7 @@ if $LOCAL_ONLY; then
 
   xcodebuild -create-xcframework \
     -library "$LIB_PATH" \
-    -headers "$PROJECT_DIR/Sources/CPNGOptim/include/" \
+    -headers "$XCFW_HEADERS" \
     -output "$PROJECT_DIR/$FRAMEWORK_NAME.xcframework"
 else
   # ── Full build: create universal binaries + multi-platform XCFramework ──
@@ -151,11 +165,11 @@ else
 
   xcodebuild -create-xcframework \
     -library "$PROJECT_DIR/target/universal-macos/$LIB_NAME" \
-    -headers "$PROJECT_DIR/Sources/CPNGOptim/include/" \
+    -headers "$XCFW_HEADERS" \
     -library "$RUST_DIR/target/aarch64-apple-ios/release/$MERGED_LIB_NAME" \
-    -headers "$PROJECT_DIR/Sources/CPNGOptim/include/" \
+    -headers "$XCFW_HEADERS" \
     -library "$PROJECT_DIR/target/universal-ios-sim/$LIB_NAME" \
-    -headers "$PROJECT_DIR/Sources/CPNGOptim/include/" \
+    -headers "$XCFW_HEADERS" \
     -output "$PROJECT_DIR/$FRAMEWORK_NAME.xcframework"
 
   # ── Step 3: Package for distribution ──

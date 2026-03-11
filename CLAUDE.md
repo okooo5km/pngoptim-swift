@@ -63,6 +63,17 @@ swift build
 swift test
 ```
 
+## 发版流程
+
+**核心原则：main 分支始终 `useLocalFramework = true`，release tag 由 CI 自动处理。**
+
+1. 确保 main 代码就绪，Package.swift 为 `useLocalFramework = true`
+2. 打 tag：`git tag vX.Y.Z && git push origin vX.Y.Z`
+3. release workflow 自动：构建 XCFramework → 计算 checksum → 修改 Package.swift（`false` + checksum + URL）→ retag → 创建 Release
+4. **workflow 不会推回 main**，tag commit 是独立的发布快照
+
+重新发版：`gh release delete vX.Y.Z` → `git tag -f vX.Y.Z && git push -f origin vX.Y.Z`
+
 ## 架构层次
 
 ```
