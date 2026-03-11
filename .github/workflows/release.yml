@@ -14,7 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Skip if release already exists
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" &>/dev/null; then
+            echo "Release $TAG already exists, skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Rust toolchain
+        if: steps.check.outputs.skip != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: >-
@@ -25,6 +39,7 @@ jobs:
             x86_64-apple-ios
 
       - name: Cache Rust dependencies
+        if: steps.check.outputs.skip != 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -36,19 +51,56 @@ jobs:
             ${{ runner.os }}-cargo-release-
 
       - name: Build XCFramework (full)
+        if: steps.check.outputs.skip != 'true'
         run: bash scripts/build-xcframework.sh
 
       - name: Swift test
+        if: steps.check.outputs.skip != 'true'
         run: swift test
 
       - name: Compute checksum
+        if: steps.check.outputs.skip != 'true'
         id: checksum
         run: |
           CHECKSUM=$(swift package compute-checksum PNGOptimCore.xcframework.zip)
           echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
           echo "Checksum: $CHECKSUM"
 
+      - name: Update Package.swift for release
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          CHECKSUM="${{ steps.checksum.outputs.checksum }}"
+
+          # Set useLocalFramework = false for remote consumers
+          sed -i '' 's/let useLocalFramework = true/let useLocalFramework = false/' Package.swift
+
+          # Update download URL version
+          sed -i '' "s|releases/download/v[0-9]*\.[0-9]*\.[0-9]*/|releases/download/${TAG}/|" Package.swift
+
+          # Update checksum
+          sed -i '' "s/checksum: \"[a-f0-9]*\"/checksum: \"${CHECKSUM}\"/" Package.swift
+
+          echo "Updated Package.swift:"
+          cat Package.swift
+
+      - name: Commit and force-move tag
+        if: steps.check.outputs.skip != 'true'
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Package.swift
+          git commit -m "chore: update Package.swift for ${TAG} release"
+          git push origin HEAD:main
+
+          git tag -f "$TAG"
+          git push -f origin "$TAG"
+
       - name: Create GitHub Release
+        if: steps.check.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -59,10 +111,11 @@ jobs:
             PNGOptimCore.xcframework.zip
 
       - name: Print update instructions
+        if: steps.check.outputs.skip != 'true'
         run: |
           TAG="${GITHUB_REF_NAME}"
           echo "================================================"
-          echo "Update Package.swift with:"
+          echo "Release $TAG created successfully!"
           echo "  url: https://github.com/okooo5km/pngoptim-swift/releases/download/$TAG/PNGOptimCore.xcframework.zip"
           echo "  checksum: ${{ steps.checksum.outputs.checksum }}"
           echo "================================================"
