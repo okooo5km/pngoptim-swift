@@ -7,7 +7,7 @@ Add PNGOptimKit to your Swift package:
 ```swift
 // Package.swift
 dependencies: [
-  .package(url: "https://github.com/okooo5km/pngoptim-swift.git", from: "0.3.0")
+  .package(url: "https://github.com/okooo5km/pngoptim-swift.git", from: "0.4.0")
 ],
 targets: [
   .target(
