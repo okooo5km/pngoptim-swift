@@ -234,16 +234,29 @@ fn convert_options(c_opts: &PNGOptimOptions) -> PipelineOptions {
 }
 
 fn make_error_result(err: &AppError) -> *mut PNGOptimResult {
-    let (error_code, quality_minimum, maximum_file_size) = match err {
-        AppError::Arg(_) => (ERROR_ARG, 0u8, 0u64),
-        AppError::Io { .. } => (ERROR_IO, 0, 0),
-        AppError::Decode(_) => (ERROR_DECODE, 0, 0),
-        AppError::Encode(_) => (ERROR_ENCODE, 0, 0),
-        AppError::QualityTooLow { minimum, .. } => (ERROR_QUALITY_TOO_LOW, *minimum, 0),
-        AppError::SkipIfLargerRejected {
-            maximum_file_size, ..
-        } => (ERROR_SKIP_IF_LARGER, 0, *maximum_file_size),
-    };
+    let (error_code, quality_score, quality_minimum, input_bytes, output_bytes, maximum_file_size) =
+        match err {
+            AppError::Arg(_) => (ERROR_ARG, 0u8, 0u8, 0u64, 0u64, 0u64),
+            AppError::Io { .. } => (ERROR_IO, 0, 0, 0, 0, 0),
+            AppError::Decode(_) => (ERROR_DECODE, 0, 0, 0, 0, 0),
+            AppError::Encode(_) => (ERROR_ENCODE, 0, 0, 0, 0, 0),
+            AppError::QualityTooLow { minimum, actual } => {
+                (ERROR_QUALITY_TOO_LOW, *actual, *minimum, 0, 0, 0)
+            }
+            AppError::SkipIfLargerRejected {
+                input_bytes,
+                output_bytes,
+                maximum_file_size,
+                quality_score,
+            } => (
+                ERROR_SKIP_IF_LARGER,
+                *quality_score,
+                0,
+                *input_bytes,
+                *output_bytes,
+                *maximum_file_size,
+            ),
+        };
 
     let msg = CString::new(err.to_string()).unwrap_or_default();
 
@@ -252,9 +265,9 @@ fn make_error_result(err: &AppError) -> *mut PNGOptimResult {
         data_len: 0,
         width: 0,
         height: 0,
-        input_bytes: 0,
-        output_bytes: 0,
-        quality_score: 0,
+        input_bytes,
+        output_bytes,
+        quality_score,
         quality_mse: 0.0,
         decode_ms: 0.0,
         quantize_ms: 0.0,
