@@ -5,7 +5,7 @@
 ## 项目概况
 
 - **目标**：将 Rust pngoptim 的 `process_png_bytes` API 通过 C FFI 导出，打包为 XCFramework，提供 Swift-idiomatic 的 API
-- **上游依赖**：[pngoptim](https://github.com/okooo5km/pngoptim) v0.4.0（Rust PNG 量化引擎，支持 APNG）
+- **上游依赖**：[pngoptim](https://github.com/okooo5km/pngoptim) v0.4.1（Rust PNG 量化引擎，支持 APNG）
 - **参考项目**：[SVGift](https://github.com/okooo5km/SVGift)（svgo-swift）
 
 ## 技术栈
@@ -27,7 +27,7 @@ pngoptim-swift/
   Tests/
     PNGOptimKitTests/              # swift-testing 测试
   rust/                            # FFI crate（pngoptim-ffi）
-    Cargo.toml                     # 依赖 pngoptim git tag v0.4.0
+    Cargo.toml                     # 依赖 pngoptim git tag v0.4.1
     src/lib.rs                     # C ABI 导出函数
     build.rs                       # cbindgen 生成 generated/pngoptim.h
   scripts/
