@@ -4,7 +4,7 @@
 
 import PackageDescription
 
-let useLocalFramework = true
+let useLocalFramework = false
 
 let package = Package(
   name: "PNGOptimKit",
@@ -28,8 +28,8 @@ let package = Package(
       : .binaryTarget(
         name: "PNGOptimCore",
         url:
-          "https://github.com/okooo5km/pngoptim-swift/releases/download/v0.3.0/PNGOptimCore.xcframework.zip",
-        checksum: "e38cab60c293768c39f568827d919293c1d03ce0c15dc54dfb63f479c49d8812"
+          "https://github.com/okooo5km/pngoptim-swift/releases/download/v0.3.1/PNGOptimCore.xcframework.zip",
+        checksum: "3a996b676fe1006b0a74c7981b6011282b8fd65733d1bba87967623ffe106b0e"
       ),
     // C header + modulemap bridge
     .target(
