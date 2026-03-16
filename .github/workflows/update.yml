@@ -104,10 +104,13 @@ jobs:
           VERSION="${{ steps.payload.outputs.version }}"
           # Create release on pngoptim-swift with the XCFramework
           # Must happen before swift build so the Package.swift URL is valid
+          # Delete existing release/tag if present (from a previous failed run)
+          gh release delete "$VERSION" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$VERSION" \
             --title "$VERSION" \
+            --latest \
             --notes "Automated update from [pngoptim ${VERSION}](https://github.com/okooo5km/pngoptim/releases/tag/${VERSION})" \
-            PNGOptimCore.xcframework.zip || true
+            PNGOptimCore.xcframework.zip
 
       - name: Build and test
         run: |
