@@ -127,6 +127,6 @@ jobs:
 
           git push origin main
 
-          # Tag and push (after release is created so URL is valid)
-          git tag "$VERSION"
-          git push origin "$VERSION"
+          # Tag and push (force in case release step already created it)
+          git tag -f "$VERSION"
+          git push -f origin "$VERSION"
