@@ -97,21 +97,22 @@ jobs:
           echo "Updated Version.swift:"
           cat Sources/PNGOptimKit/Version.swift
 
-      - name: Build and test
-        run: |
-          swift build
-          swift test
-
-      - name: Re-upload XCFramework to pngoptim-swift release
+      - name: Create pngoptim-swift release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.payload.outputs.version }}"
-          # Create release on pngoptim-swift with the same XCFramework
+          # Create release on pngoptim-swift with the XCFramework
+          # Must happen before swift build so the Package.swift URL is valid
           gh release create "$VERSION" \
             --title "$VERSION" \
             --notes "Automated update from [pngoptim ${VERSION}](https://github.com/okooo5km/pngoptim/releases/tag/${VERSION})" \
             PNGOptimCore.xcframework.zip || true
+
+      - name: Build and test
+        run: |
+          swift build
+          swift test
 
       - name: Commit and tag
         run: |
