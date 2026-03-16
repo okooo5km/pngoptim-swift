@@ -4,8 +4,6 @@
 
 import PackageDescription
 
-let useLocalFramework = false
-
 let package = Package(
   name: "PNGOptimKit",
   platforms: [
@@ -19,18 +17,12 @@ let package = Package(
     ),
   ],
   targets: [
-    // Prebuilt Rust static library
-    useLocalFramework
-      ? .binaryTarget(
-        name: "PNGOptimCore",
-        path: "PNGOptimCore.xcframework"
-      )
-      : .binaryTarget(
-        name: "PNGOptimCore",
-        url:
-          "https://github.com/okooo5km/pngoptim-swift/releases/download/v0.4.1/PNGOptimCore.xcframework.zip",
-        checksum: "e9311e55a10a5cf4be3a2ecb5b0ab30a0173e00f4527d550d7dbed069bece8c4"
-      ),
+    .binaryTarget(
+      name: "PNGOptimCore",
+      url:
+        "https://github.com/okooo5km/pngoptim-swift/releases/download/v0.4.1/PNGOptimCore.xcframework.zip",
+      checksum: "e9311e55a10a5cf4be3a2ecb5b0ab30a0173e00f4527d550d7dbed069bece8c4"
+    ),
     // C header + modulemap bridge
     .target(
       name: "CPNGOptim",

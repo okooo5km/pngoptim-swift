@@ -1,6 +1,8 @@
 # PNGOptimKit
 
-Swift wrapper for the [pngoptim](https://github.com/okooo5km/pngoptim) PNG quantization engine. Provides lossy PNG compression with automatic APNG detection and lossless animation optimization for macOS and iOS applications via Swift Package Manager.
+Swift Package Manager distribution for the [pngoptim](https://github.com/okooo5km/pngoptim) PNG quantization engine. Provides lossy PNG compression with automatic APNG detection and lossless animation optimization for macOS and iOS applications.
+
+This is a **dist repo** — the Rust source code, FFI bindings, and XCFramework build scripts live in the [pngoptim](https://github.com/okooo5km/pngoptim) repository. Releases are automated: when pngoptim tags a new version, the XCFramework is built and this package is updated automatically.
 
 ## Requirements
 
@@ -13,7 +15,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/okooo5km/pngoptim-swift.git", from: "0.4.1")
+  .package(url: "https://github.com/okooo5km/pngoptim-swift.git", from: "0.4.2")
 ]
 ```
 
@@ -99,17 +101,6 @@ PNGOptimKit automatically detects APNG files via the `acTL` chunk and applies lo
 - **`.aggressive`** — Minimize frame rectangles by rewriting frame sizes, offsets, and blend operations for higher compression.
 
 If APNG decoding fails, the engine falls back to the standard static PNG quantization pipeline.
-
-## Development
-
-```bash
-# Build XCFramework (local development)
-bash scripts/build-xcframework.sh --local-only
-
-# Build and test
-swift build
-swift test
-```
 
 ## License
 

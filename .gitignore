@@ -6,12 +6,5 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
-
-# Rust
-rust/target/
-rust/generated/
-
-# XCFramework (built artifacts)
 PNGOptimCore.xcframework/
 PNGOptimCore.xcframework.zip
-target/

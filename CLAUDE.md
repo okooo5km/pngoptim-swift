@@ -4,36 +4,30 @@
 
 ## 项目概况
 
-- **目标**：将 Rust pngoptim 的 `process_png_bytes` API 通过 C FFI 导出，打包为 XCFramework，提供 Swift-idiomatic 的 API
-- **上游依赖**：[pngoptim](https://github.com/okooo5km/pngoptim) v0.4.1（Rust PNG 量化引擎，支持 APNG）
-- **参考项目**：[SVGift](https://github.com/okooo5km/SVGift)（svgo-swift）
+- **目标**：纯 Swift 分发包，提供 pngoptim 的 Swift-idiomatic API
+- **上游依赖**：[pngoptim](https://github.com/okooo5km/pngoptim)（Rust PNG 量化引擎，构建 XCFramework 并通过 dispatch 自动更新）
+- **参考模式**：rust-nostr/nostr-sdk-swift — source repo 构建一切，dist repo 极简分发
 
 ## 技术栈
 
 - Swift 5.9+ / SwiftPM
-- Rust (staticlib via C FFI)
-- cbindgen（自动生成 C 头文件）
-- XCFramework（多架构分发）
+- XCFramework（预构建二进制，来自 pngoptim 仓库的 release）
 - 测试：Swift Testing
 
 ## 项目结构
 
 ```
 pngoptim-swift/
-  Package.swift                    # SPM 包定义（useLocalFramework 开关）
+  Package.swift                    # SPM 包定义（始终使用 remote binary target）
   Sources/
     CPNGOptim/                     # C bridge target（头文件 + modulemap）
     PNGOptimKit/                   # Swift API（PNGOptim.optimize）
   Tests/
     PNGOptimKitTests/              # swift-testing 测试
-  rust/                            # FFI crate（pngoptim-ffi）
-    Cargo.toml                     # 依赖 pngoptim git tag v0.4.1
-    src/lib.rs                     # C ABI 导出函数
-    build.rs                       # cbindgen 生成 generated/pngoptim.h
-  scripts/
-    build-xcframework.sh           # 交叉编译 + XCFramework 打包
   docs/                            # 项目文档
-  .github/workflows/               # CI/CD
+  .github/workflows/
+    ci.yml                         # CI：swift build + swift test
+    update.yml                     # 自动更新：接收 pngoptim dispatch → 更新 Package.swift
 ```
 
 ## 开发约定
@@ -43,36 +37,26 @@ pngoptim-swift/
 - 文档（除 CLAUDE.md 和 README.md）存放于 `docs/` 目录
 - 部署目标：macOS 10.15+ / iOS 13+
 - Swift API 中时间类型使用 `TimeInterval`（兼容 macOS 10.15）
-- FFI 使用 `std::ffi::c_char`（不依赖 libc crate）
 - API 变更时同步更新 `docs/usage.md` 和 `README.md` 中的对应文档
 
 ## 常用命令
 
 ```bash
-# Rust FFI 编译
-cd rust && cargo build --release
-
-# 构建 XCFramework（本地开发）
-bash scripts/build-xcframework.sh --local-only
-
-# 构建 XCFramework（完整 5 架构）
-bash scripts/build-xcframework.sh
-
-# Swift 构建和测试
+# Swift 构建和测试（自动下载 remote XCFramework）
 swift build
 swift test
 ```
 
 ## 发版流程
 
-**核心原则：main 分支始终 `useLocalFramework = true`，release tag 由 CI 自动处理。**
+**核心原则：pngoptim-swift 是纯分发仓库，所有构建在 pngoptim 仓库完成。**
 
-1. 确保 main 代码就绪，Package.swift 为 `useLocalFramework = true`
-2. 打 tag：`git tag vX.Y.Z && git push origin vX.Y.Z`
-3. release workflow 自动：构建 XCFramework → 计算 checksum → 修改 Package.swift（`false` + checksum + URL）→ retag → 创建 Release
-4. **workflow 不会推回 main**，tag commit 是独立的发布快照
+1. pngoptim 仓库打 tag（如 `v0.4.2`）
+2. pngoptim 的 release workflow 构建 XCFramework → 计算 checksum → dispatch 到 pngoptim-swift
+3. pngoptim-swift 的 update workflow 自动：下载 XCFramework → 验证 checksum → 更新 Package.swift + Version.swift + header → 构建测试 → commit + tag + release
+4. 消费者 `swift package update` 即可获取新版本
 
-重新发版：`gh release delete vX.Y.Z` → `git tag -f vX.Y.Z && git push -f origin vX.Y.Z`
+手动触发备用：通过 workflow_dispatch 手动传入 version / url / checksum。
 
 ## 架构层次
 

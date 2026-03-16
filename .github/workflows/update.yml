@@ -1,0 +1,131 @@
+name: Update XCFramework
+
+on:
+  repository_dispatch:
+    types: [update-xcframework]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g. v0.4.2)"
+        required: true
+      xcframework_url:
+        description: "XCFramework download URL"
+        required: true
+      checksum:
+        description: "XCFramework checksum"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Extract payload
+        id: payload
+        run: |
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            VERSION="${{ github.event.client_payload.version }}"
+            XCFRAMEWORK_URL="${{ github.event.client_payload.xcframework_url }}"
+            CHECKSUM="${{ github.event.client_payload.checksum }}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+            XCFRAMEWORK_URL="${{ github.event.inputs.xcframework_url }}"
+            CHECKSUM="${{ github.event.inputs.checksum }}"
+          fi
+          # Strip 'v' prefix for version number
+          VERSION_NUM="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version_num=$VERSION_NUM" >> "$GITHUB_OUTPUT"
+          echo "xcframework_url=$XCFRAMEWORK_URL" >> "$GITHUB_OUTPUT"
+          echo "checksum=$CHECKSUM" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION, URL: $XCFRAMEWORK_URL, Checksum: $CHECKSUM"
+
+      - name: Download XCFramework
+        run: |
+          curl -L -o PNGOptimCore.xcframework.zip "${{ steps.payload.outputs.xcframework_url }}"
+
+      - name: Verify checksum
+        run: |
+          EXPECTED="${{ steps.payload.outputs.checksum }}"
+          ACTUAL=$(swift package compute-checksum PNGOptimCore.xcframework.zip)
+          echo "Expected: $EXPECTED"
+          echo "Actual:   $ACTUAL"
+          if [[ "$EXPECTED" != "$ACTUAL" ]]; then
+            echo "ERROR: Checksum mismatch!"
+            exit 1
+          fi
+
+      - name: Extract and update header
+        run: |
+          unzip -o PNGOptimCore.xcframework.zip -d /tmp/xcfw
+          # Find pngoptim.h in any architecture slice
+          HEADER=$(find /tmp/xcfw -name "pngoptim.h" | head -1)
+          if [[ -n "$HEADER" ]]; then
+            cp "$HEADER" Sources/CPNGOptim/include/pngoptim.h
+            echo "Updated header from XCFramework"
+          else
+            echo "Warning: pngoptim.h not found in XCFramework, keeping existing header"
+          fi
+          rm -rf /tmp/xcfw
+
+      - name: Update Package.swift
+        run: |
+          VERSION="${{ steps.payload.outputs.version }}"
+          CHECKSUM="${{ steps.payload.outputs.checksum }}"
+
+          # Update download URL: replace version in the pngoptim-swift release URL
+          sed -i '' "s|releases/download/v[0-9]*\.[0-9]*\.[0-9]*/|releases/download/${VERSION}/|" Package.swift
+
+          # Update checksum
+          sed -i '' "s/checksum: \"[a-f0-9]*\"/checksum: \"${CHECKSUM}\"/" Package.swift
+
+          echo "Updated Package.swift:"
+          cat Package.swift
+
+      - name: Update Version.swift
+        run: |
+          VERSION_NUM="${{ steps.payload.outputs.version_num }}"
+          sed -i '' "s/pngOptimKitVersion = \"[0-9]*\.[0-9]*\.[0-9]*\"/pngOptimKitVersion = \"${VERSION_NUM}\"/" \
+            Sources/PNGOptimKit/Version.swift
+
+          echo "Updated Version.swift:"
+          cat Sources/PNGOptimKit/Version.swift
+
+      - name: Build and test
+        run: |
+          swift build
+          swift test
+
+      - name: Re-upload XCFramework to pngoptim-swift release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.payload.outputs.version }}"
+          # Create release on pngoptim-swift with the same XCFramework
+          gh release create "$VERSION" \
+            --title "$VERSION" \
+            --notes "Automated update from [pngoptim ${VERSION}](https://github.com/okooo5km/pngoptim/releases/tag/${VERSION})" \
+            PNGOptimCore.xcframework.zip || true
+
+      - name: Commit and tag
+        run: |
+          VERSION="${{ steps.payload.outputs.version }}"
+          VERSION_NUM="${{ steps.payload.outputs.version_num }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Package.swift Sources/PNGOptimKit/Version.swift Sources/CPNGOptim/include/pngoptim.h
+          git commit -m "chore: update to pngoptim ${VERSION_NUM}" || echo "No changes to commit"
+
+          git push origin main
+
+          # Tag and push (after release is created so URL is valid)
+          git tag "$VERSION"
+          git push origin "$VERSION"
