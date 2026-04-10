@@ -2,4 +2,4 @@
 // Licensed under the MIT License.
 
 /// PNGOptimKit version string.
-public let pngOptimKitVersion = "0.5.0"
+public let pngOptimKitVersion = "0.5.1"
