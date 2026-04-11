@@ -21,7 +21,7 @@ let package = Package(
       name: "PNGOptimCore",
       url:
         "https://github.com/okooo5km/pngoptim-swift/releases/download/v0.5.3/PNGOptimCore.xcframework.zip",
-      checksum: "a6b12e37e51f32c6240a6f64ba0f155564ab63bbf1ae697bffa202f25bf9bea8"
+      checksum: "980f95e3bcd86a927de62cbf04e6e08016f58cf82d48ecbd49f08d5ef789ef67"
     ),
     // C header + modulemap bridge
     .target(
