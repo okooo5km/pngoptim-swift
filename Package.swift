@@ -20,8 +20,8 @@ let package = Package(
     .binaryTarget(
       name: "PNGOptimCore",
       url:
-        "https://github.com/okooo5km/pngoptim-swift/releases/download/v0.6.0/PNGOptimCore.xcframework.zip",
-      checksum: "7ca00bc729e23a39a555db1980b73d4e1ab063a7262c08b865676eead73d0900"
+        "https://github.com/okooo5km/pngoptim-swift/releases/download/v0.6.1/PNGOptimCore.xcframework.zip",
+      checksum: "582c74df3931dac32c0fe24d4a4f4cb8222d5275ac5b088e3c5336cc9e5ef911"
     ),
     // C header + modulemap bridge
     .target(
