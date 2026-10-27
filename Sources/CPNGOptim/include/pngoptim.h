@@ -32,7 +32,8 @@ typedef struct PNGOptimOptions {
    */
   uint8_t speed;
   /**
-   * Dither level (0.0-1.0, negative = default of 1.0).
+   * Dither level (0.0-1.0). Negative = default: full strength, modulated per
+   * region (adaptive). An explicit 0.0-1.0 value is applied uniformly.
    */
   float dither_level;
   /**
